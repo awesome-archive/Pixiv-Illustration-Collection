@@ -8,11 +8,12 @@ import org.apache.http.util.EntityUtils;
 import org.jsoup.Jsoup;
 
 import java.io.IOException;
+import java.net.URLEncoder;
 
 public class RelatedTagsUtil {
     public static String getRelatedTags(String keyword) throws IOException {
         CloseableHttpClient client = HttpClientPoolUtil.getHttpClient();
-        HttpGet httpget = new HttpGet("https://tag.api.pixivic.com/search.php?s_mode=s_tag&word=" + keyword);
+        HttpGet httpget = new HttpGet("https://tag.api.pixivic.com/search.php?s_mode=s_tag&word=" +  URLEncoder.encode(keyword, "UTF-8"));
         httpget.setHeader("accept-language","zh-CN,zh;q=0.9");
         CloseableHttpResponse response = null;
         try {
