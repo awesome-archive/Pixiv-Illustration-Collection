@@ -14,7 +14,7 @@ public class SearchUtil {
     public static String orderByPop(String keyword, int page) throws Exception {
         CloseableHttpClient client = HttpClientPoolUtil.getHttpClient();
         String url="https://app-api.pixiv.net/v1/search/illust?filter=for_android&sort=popular_desc&search_target=partial_match_for_tags&offset=" + page * 30+"&word="+URLDecoder.decode(keyword,"UTF-8");
-        HttpGet httpget = new HttpGet("https://search.api.pixivic.com/v1/search/illust?filter=for_android&sort=popular_desc&search_target=partial_match_for_tags&word="+keyword+"&offset="+page*30);
+        HttpGet httpget = new HttpGet("https://search.api.pixivic.com/v1/search/illust?filter=for_android&sort=popular_desc&search_target=partial_match_for_tags&word="+URLEncoder.encode(keyword, "UTF-8")+"&offset="+page*30);
         httpget.addHeader("Authorization", "Bearer " + OAuthUtil.getAccess_token());
         HeaderUtil.decorateHeader(httpget);
         httpget.setHeader("Content-Type","");
