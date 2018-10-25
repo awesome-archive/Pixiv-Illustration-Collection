@@ -31,7 +31,7 @@
 更改conf.xml文件与druid配置文件即可
 
 ### TODO
-留言板筹备中
+留言板上线测试
 
 ## License
 待定
