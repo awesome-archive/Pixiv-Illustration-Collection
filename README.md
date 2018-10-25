@@ -25,7 +25,7 @@
 - 阿里云 深圳:作为主web服务器之一,nginx tomcat动静分离
 
 ### 架构图:
-![Image text](https://wx3.sinaimg.cn/large/006346uDgy1fwkgznb2z5j31vp18h128.jpg)
+![Image text](https://wx1.sinaimg.cn/large/006346uDgy1fwkh35ej1qj31vp1gdwo3.jpg)
 
 ### 使用方法
 更改conf.xml文件与druid配置文件即可
