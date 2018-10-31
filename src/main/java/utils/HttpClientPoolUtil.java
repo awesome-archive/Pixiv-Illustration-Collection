@@ -69,6 +69,7 @@ public class HttpClientPoolUtil {
 
     public static CloseableHttpClient getHttpClient() {
         CloseableHttpClient httpClient = HttpClients.custom()
+                .setDefaultRequestConfig(defaultRequestConfig)
                 .disableCookieManagement()
                 .setConnectionManager(manager)
                 .build();
