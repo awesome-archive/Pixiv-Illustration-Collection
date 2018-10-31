@@ -27,8 +27,13 @@ public class HttpClientPoolUtil {
     private static final int WS4_SINAIMG_CN_COM_MAX_PER_ROUTE = 50;
     private static PoolingHttpClientConnectionManager manager; //连接池管理类
     private static IdleConnectionMonitorThread staleMonitor; //连接池监控类
-
+    private static RequestConfig defaultRequestConfig;
     static {
+        defaultRequestConfig = RequestConfig.custom()
+                .setSocketTimeout(2000)
+                .setConnectTimeout(5000)
+                .setConnectionRequestTimeout(5000)
+                .build();
         LayeredConnectionSocketFactory sslsf = null;
         try {
             sslsf = new SSLConnectionSocketFactory(SSLContext.getDefault());
