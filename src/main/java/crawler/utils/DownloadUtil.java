@@ -38,6 +38,7 @@ public class DownloadUtil {
                 //图片尺寸过大的处理
                 System.out.println(filelength);
                 if (filelength > MAXLENGTH) {
+                    httpget.abort();
                     httpget = new HttpGet(url.replace("https://i.pximg.net/img-original/img", "https://i.pximg.net/img-master/img").replace(".jpg", "_master1200.jpg").replace(".png", "_master1200.jpg"));
                     httpget.addHeader("Referer", "https://app-api.pixiv.net/");
                     response = httpclient.execute(httpget);
