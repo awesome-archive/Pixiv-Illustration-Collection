@@ -34,17 +34,17 @@ public class DownloadUtil {
         try {
             response = httpclient.execute(httpget);
             if (HttpStatus.SC_OK == response.getStatusLine().getStatusCode()) {
-                HttpEntity entity = response.getEntity();
-                long filelength = entity.getContentLength();
+                long filelength = Long.parseLong(response.getFirstHeader("Content-Length").getElements()[0].toString());
                 //图片尺寸过大的处理
+                System.out.println(filelength);
                 if (filelength > MAXLENGTH) {
-                    httpget = new HttpGet(url.replace("https://i.pximg.net/img-original/img", "https://i.pximg.net/img-master/img").replace(".jpg", "_master1200.jpg"));
+                    httpget = new HttpGet(url.replace("https://i.pximg.net/img-original/img", "https://i.pximg.net/img-master/img").replace(".jpg", "_master1200.jpg").replace(".png", "_master1200.jpg"));
                     httpget.addHeader("Referer", "https://app-api.pixiv.net/");
                     response = httpclient.execute(httpget);
-                    entity = response.getEntity();
                 }
+                HttpEntity entity = response.getEntity();
                 InputStream in = entity.getContent();
-                savePicToDisk(in, "/home/PIC/" + Constant.DATE + "/", String.valueOf(illustration.getRank()) + ".png");
+                savePicToDisk(in, "E:\\" + Constant.DATE + "/", String.valueOf(illustration.getRank()) + ".png");
                 in.close();
             }
         } finally {
