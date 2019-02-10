@@ -3,7 +3,10 @@
 # Pixiv Illustration Collection
 -------------
 一个提供有限的pixiv日排行与高级会员搜索的站点
-
+ 
+![](https://img.shields.io/github/stars/OysterQAQ/Pixiv-Illustration-Collection.svg) ![](https://img.shields.io/github/forks/OysterQAQ/Pixiv-Illustration-Collection.svg) ![](https://img.shields.io/badge/license-AGPLv3-blue.svg)
+ 
+ 
 ### Link:https://pixivic.com
 
 ### Bright Point:
@@ -35,4 +38,4 @@
 等待使用spring reacive web重构
 
 ## License
-待定
+AGPL v3
