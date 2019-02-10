@@ -32,7 +32,7 @@
 更改conf.xml文件与druid配置文件即可
 
 ### TODO
-留言板上线测试
+等待使用spring reacive web重构
 
 ## License
 待定
