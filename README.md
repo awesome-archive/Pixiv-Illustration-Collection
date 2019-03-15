@@ -35,7 +35,9 @@
 更改conf.xml文件与druid配置文件即可
 
 ### TODO
-等待使用spring reacive web重构
+重构:
+* web:spring reacive web
+* crawler:jdk11 httpclient
 
 ## License
 AGPL v3
