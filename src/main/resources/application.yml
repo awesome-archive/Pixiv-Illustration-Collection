@@ -18,17 +18,17 @@ spring:
             port: 465
             class: javax.net.ssl.SSLSocketFactory
 pixiv:
-  client_id: KzEZED7aC0vird8jWyHM38mXjNTY
-  client_secret: W9JZoJe00qPvJsiyCGT3CCtC6ZUtdpKpzMbNlUGP
-  username: 392822872@qq.com
-  password: Linhao199741
-  device_token: fb12e7c1945000850deb5f7001c02745
-  refresh_token: 07FHA5xA6NkOIxIayqm3tZbJqxbypDJHrXguT7cazLI
+  client_id:
+  client_secret:
+  username:
+  password:
+  device_token:
+  refresh_token: 
 sina:
-  username: 15507838938
-  password: linhao199741
+  username:
+  password:
 imgur:
-  client_id: Client-ID e335942df487289
+  client_id:
 imageSave:
   path: E:\244\
 graphicsMagick:
