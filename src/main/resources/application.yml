@@ -23,7 +23,7 @@ pixiv:
   username:
   password:
   device_token:
-  refresh_token: 
+  refresh_token:
 sina:
   username:
   password:
