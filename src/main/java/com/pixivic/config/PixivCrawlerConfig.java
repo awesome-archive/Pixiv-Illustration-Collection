@@ -53,12 +53,11 @@ public class PixivCrawlerConfig {
         SSLContext sc = SSLContext.getInstance("SSL");
         sc.init(null, trustAllCertificates, new SecureRandom());
         return HttpClient.newBuilder()
-                .version(HttpClient.Version.HTTP_1_1)
+                .version(HttpClient.Version.HTTP_2)
                 .sslParameters(sslParams)
-                .proxy(ProxySelector.of(new InetSocketAddress("127.0.0.1", 8888)))
+            //   .proxy(ProxySelector.of(new InetSocketAddress("127.0.0.1", 8888)))
                 .sslContext(sc)
                 .executor(Executors.newFixedThreadPool(nThread))
-                .connectTimeout(Duration.ofSeconds(60))
                 .followRedirects(HttpClient.Redirect.NEVER)
                 .build();
     }

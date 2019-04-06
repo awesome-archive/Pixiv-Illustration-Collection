@@ -28,9 +28,9 @@ public class IllustrationsUtil {
     private String checkWord;
 
     public Illustration[] getIllustrations(String mode, String date) throws NoSuchAlgorithmException, IOException, InterruptedException {
-        Illustration[][] illustrations = new Illustration[4][];
+        Illustration[][] illustrations = new Illustration[5][];
         Illustration[] illustrationsLIst;
-        for (int i = 0; i < 4; i++) {
+        for (int i = 0; i < 5; i++) {
             illustrations[i] = jsonToObject(getIllustrationsJson(mode, date, i));
         }
         illustrationsLIst = arrangeArray(illustrations);
