@@ -4,8 +4,8 @@ spring:
       enabled: false
   mail:
     host: smtp.qq.com
-    username: 392822872@qq.com
-    password: yrhmglulgsxsbgjf
+    username:
+    password:
     protocol: smtp
     properties:
       mail:
@@ -30,11 +30,14 @@ sina:
 imgur:
   client_id:
 imageSave:
-  path: E:\244\
+  path: /media/oysterqaq/01495ff8-b8db-47a2-9087-ad5a6ef45ec8/pixivic
+  default: /media/oysterqaq/01495ff8-b8db-47a2-9087-ad5a6ef45ec8/pixivic/default.jpg
 graphicsMagick:
-  path: D:\GraphicsMagick-1.3.31-Q16\gm.exe
+  path: /usr/bin/gm
 webClient:
-  domain: localhost:8080
+  domain: 192.168.123.87:8080
   checkWord: 1111
 thread:
-  num: 1
+  num: 4
+owner:
+  email: 392822872@qq.com

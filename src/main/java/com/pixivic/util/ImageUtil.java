@@ -24,6 +24,7 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Base64;
@@ -79,19 +80,17 @@ public class ImageUtil {
         }};
         setSinaCookies();
         random = new Random(47);
-        System.out.println(cookie);
     }
 
     public CompletableFuture<String> deal(String url, String fileName, Integer sanity_level, String type) throws IOException, InterruptedException {
         if (type.equals("ugoira")) {
-            System.out.println(url);
             url = "https://i.pximg.net/img-zip-ugoira/img/" + url.substring(url.indexOf("/img/") + 5, url.length() - 5) + "600x600.zip";
         }
         return download(url, fileName, sanity_level, type).whenComplete((resp, throwable) -> {
             Integer respSize = Integer.valueOf(resp.headers().firstValue("Content-Length").get());
             if (respSize > maxSize) {//使用返回头看大小
                 //压缩(png百分99转jpg,其他则百分80转jpg)
-                System.out.println(fileName + " 尺寸过大准备压缩");
+                System.out.println("\n" + fileName + " 尺寸过大准备进行压缩---------------");
                 Integer quality;
                 if (resp.body().endsWith(".png")) {
                     if (respSize > maxSize * 2)
@@ -105,16 +104,16 @@ public class ImageUtil {
                 } catch (IOException | GMException | GMServiceException e) {
                     System.err.println("图片处理异常");
                 }
-                System.out.println(fileName + "压缩完毕");
+                System.out.println(fileName + "压缩完毕--------------------------------------------");
             }
             if (type.equals("ugoira")) {  //动图通道
-                System.out.println(fileName + " 检测为动态图片,准备解压合并");
+                System.out.println(fileName + " 检测为动态图片,准备下载解压ZIP并合并为GIF文件");
                 //解压+合并gif
                 try {
                     zipUtil.unzip(Paths.get(path, fileName), resp.body().toString());
                     String s = Paths.get(path, fileName).toString();
                     pooledGMService.execute("convert -loop 0 -delay 10 -limit threads 4 -limit memory 256MB " + s + "/*.jpg " + s + ".gif");
-                    System.out.println("gif合成成功\n");
+                    System.out.println("合成GIF成功,等待上传----------------------------");
                 } catch (IOException | GMException | GMServiceException e) {
                     System.err.println("图片处理异常");
                 }
@@ -124,10 +123,15 @@ public class ImageUtil {
                         if (type.equals("ugoira")) {  //动图通道
                             // return uploadToVim_cn(Paths.get(path, fileName + ".gif"));
                             //return uploadToImgur(Paths.get(path, fileName + ".gif"));
-                            return uploadToImgBB(Paths.get(path, fileName + ".gif"));
+                            Path path = Paths.get(this.path, fileName + ".gif");
+                            if (Files.size(path) < maxSize)
+                                return uploadToImgBB(path);
+                            return CompletableFuture.completedFuture("https://ws2.sinaimg.cn/large/007iuyE8gy1g1u0evxm1bg30a00dcmx4.gif");
                         } else {
-                            if (sanity_level > 5)    //色图通道
-                                return uploadToUploadCC(body);
+                            if (sanity_level > 5)
+                                if (System.currentTimeMillis() % 2 == 0)//色图通道
+                                    return uploadToUploadCC(body);
+                                else return uploadToImgBB(body);
                             // return uploadToVim_cn(resp.body());
                             return uploadToSina(body);
                         }
