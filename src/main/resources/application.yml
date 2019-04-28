@@ -4,7 +4,7 @@ spring:
       enabled: false
   mail:
     host: smtp.qq.com
-    username:
+    username: 
     password:
     protocol: smtp
     properties:
@@ -29,15 +29,19 @@ sina:
   password:
 imgur:
   client_id:
+postimage:
+  apikey:
 imageSave:
-  path: /media/oysterqaq/01495ff8-b8db-47a2-9087-ad5a6ef45ec8/pixivic
-  default: /media/oysterqaq/01495ff8-b8db-47a2-9087-ad5a6ef45ec8/pixivic/default.jpg
+  path:
+  default:
 graphicsMagick:
-  path: /usr/bin/gm
+  path:
 webClient:
-  domain: 192.168.123.87:8080
-  checkWord: 1111
+  domain:
+  checkWord:
 thread:
   num: 4
 owner:
-  email: 392822872@qq.com
+  email:
+backup:
+  path:

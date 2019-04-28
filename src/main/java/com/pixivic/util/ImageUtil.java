@@ -2,6 +2,7 @@ package com.pixivic.util;
 
 import com.pixivic.model.DefaultDownloadHttpResponse;
 import com.pixivic.model.DefaultUploadHttpResponse;
+import com.pixivic.model.illust.ImageUrls;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.Setter;
@@ -21,17 +22,19 @@ import javax.annotation.PostConstruct;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.net.URI;
+import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.Charset;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Base64;
 import java.util.HashMap;
-import java.util.Random;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 @Component
 @RequiredArgsConstructor(onConstructor = @__(@Autowired))
@@ -43,11 +46,10 @@ public class ImageUtil {
     private final DefaultDownloadHttpResponse defaultDownloadHttpResponse;
     private final DefaultUploadHttpResponse defaultUploadHttpResponse;
     private HashMap<String, String> formData;
-    private Random random;
     @Setter
     private String cookie;
-    @Getter
     @Setter
+    @Getter
     @Value("${imageSave.path}")
     private String path;
     @Value("${sina.username}")
@@ -56,7 +58,20 @@ public class ImageUtil {
     private String password;
     @Value("${imgur.client_id}")
     private String imgur_client_id;
-    private Long maxSize = 10485760L;//大于10m压缩
+    @Value("${postimage.apikey}")
+    private String postimage_apikey;
+    private AtomicInteger SMMSCounter;
+    //常量区
+    private final static String SINA301URL = "https://wx4.sinaimg.cn/large/007iuyE8gy1g18b8poxhlj30rs12n7wh.jpg";
+    private final static Long MAXSIZE_LEVEL1 = 10485760L;//大于10m压缩
+    private final static Long MAXSIZE_LEVEL2 = 5242880L;//大于10m压缩
+    private final static Long MAXSIZE_LEVEL3 = 2097152L;//大于10m压缩
+    private final static String SINAURL = "http://picupload.weibo.com/interface/pic_upload.php?s=xml&ori=1&data=1&rotate=0&wm=&app=miniblog&mime=image%2Fjpeg";
+    private final static String UPLOADCCURL = "https://upload.cc/image_upload";
+    private final static String IMGBBURL = "https://zh-cn.imgbb.com/json";
+    private final static ImageUrls IMAGEURLS301 = new ImageUrls(SINA301URL, SINA301URL);
+    private final static String UPLOADCCPRE = "https://upload.cc/";
+    private final static String IMGBBPRE = "https://i0.wp.com/";
 
     @PostConstruct
     public void init() throws IOException, InterruptedException {
@@ -79,21 +94,22 @@ public class ImageUtil {
             put("returntype", "TEXT");
         }};
         setSinaCookies();
-        random = new Random(47);
+        SMMSCounter = new AtomicInteger(0);
+
     }
 
-    public CompletableFuture<String> deal(String url, String fileName, Integer sanity_level, String type) throws IOException, InterruptedException {
+    public CompletableFuture<ImageUrls> deal(String url, String fileName, Integer sanity_level, String type) {
         if (type.equals("ugoira")) {
             url = "https://i.pximg.net/img-zip-ugoira/img/" + url.substring(url.indexOf("/img/") + 5, url.length() - 5) + "600x600.zip";
         }
         return download(url, fileName, sanity_level, type).whenComplete((resp, throwable) -> {
             Integer respSize = Integer.valueOf(resp.headers().firstValue("Content-Length").get());
-            if (respSize > maxSize) {//使用返回头看大小
+            if (respSize > MAXSIZE_LEVEL1) {//使用返回头看大小
                 //压缩(png百分99转jpg,其他则百分80转jpg)
                 System.out.println("\n" + fileName + " 尺寸过大准备进行压缩---------------");
                 Integer quality;
                 if (resp.body().endsWith(".png")) {
-                    if (respSize > maxSize * 2)
+                    if (respSize > MAXSIZE_LEVEL1 * 2)
                         quality = 70;
                     else
                         quality = 99;
@@ -121,22 +137,20 @@ public class ImageUtil {
         }).thenApply(HttpResponse::body).thenCompose(body -> {
                     try {
                         if (type.equals("ugoira")) {  //动图通道
-                            // return uploadToVim_cn(Paths.get(path, fileName + ".gif"));
-                            //return uploadToImgur(Paths.get(path, fileName + ".gif"));
                             Path path = Paths.get(this.path, fileName + ".gif");
-                            if (Files.size(path) < maxSize)
-                                return uploadToImgBB(path);
-                            return CompletableFuture.completedFuture("https://ws2.sinaimg.cn/large/007iuyE8gy1g1u0evxm1bg30a00dcmx4.gif");
+                            if (Files.size(path) < MAXSIZE_LEVEL1)//gif大小限制
+                                return uploadToImgBB(Paths.get(this.path, fileName + ".gif"));
+                            return uploadToSina(Paths.get(this.path, fileName, "000000.jpg"));//过大，仅上传第一帧
                         } else {
-                            if (sanity_level > 5)
-                                if (System.currentTimeMillis() % 2 == 0)//色图通道
-                                    return uploadToUploadCC(body);
-                                else return uploadToImgBB(body);
-                            // return uploadToVim_cn(resp.body());
-                            return uploadToSina(body);
+                            if (sanity_level < 4) {
+                                return uploadToSina(body);
+                            }
+                            if (System.currentTimeMillis() % 2 == 0)//色图通道
+                                return uploadToUploadCC(body);
+                            else return uploadToImgBB(body);
                         }
                     } catch (IOException e) {
-                        return CompletableFuture.completedFuture("上传异常");
+                        return CompletableFuture.completedFuture(IMAGEURLS301);//上传异常
                     }
                 }
         );
@@ -153,32 +167,32 @@ public class ImageUtil {
         setCookie(responseCookie);
     }
 
-    private CompletableFuture<String> uploadToSina(Path path) throws IOException {
+    public CompletableFuture<ImageUrls> uploadToSina(Path path) throws IOException {
         HttpRequest upload = HttpRequest.newBuilder()
-                .uri(URI.create("http://picupload.weibo.com/interface/pic_upload.php?s=xml&ori=1&data=1&rotate=0&wm=&app=miniblog&mime=image%2Fjpeg"))
-                .header("Cookie", cookie)
+                .uri(URI.create(SINAURL))
+                .header("Cookie", this.cookie)
                 .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/73.0.3683.86 Safari/537.36")
                 .POST(HttpRequest.BodyPublishers.ofFile(path))
                 .build();
-
         return httpClient.sendAsync(upload, HttpResponse.BodyHandlers.ofString()).completeOnTimeout(defaultUploadHttpResponse, 4, TimeUnit.MINUTES)
                 .thenApply(response -> {
                     String body = response.body();
                     if (response.statusCode() == 200 && body.contains("<pid>")) {
-                        return "https://ws4.sinaimg.cn/large/" + body.substring(body.indexOf("<pid>") + 5, body.indexOf("</pid>")) + ".jpg";
+                        String pid = body.substring(body.indexOf("<pid>") + 5, body.indexOf("</pid>"));
+                        return new ImageUrls("https://ws4.sinaimg.cn/large/" + pid + ".jpg", "https://ws4.sinaimg.cn/mw690/" + pid + ".jpg");
                     }
-                    return "https://ws4.sinaimg.cn/large/007iuyE8gy1g18b8poxhlj30rs12n7wh.jpg";//301图片等待扫描后重上传uploadcc
+                    return IMAGEURLS301;//301图片等待扫描后重上传uploadcc
                 });
     }
 
-    public CompletableFuture<String> uploadToUploadCC(Path path) {
+    public CompletableFuture<ImageUrls> uploadToUploadCC(Path path) {
         HttpEntity httpEntity = MultipartEntityBuilder.create()
-                .addBinaryBody("uploaded_file[]", path.toFile(), ContentType.IMAGE_PNG, path.getFileName().toString())
                 .setBoundary("******")
                 .setMode(HttpMultipartMode.BROWSER_COMPATIBLE)
+                .addBinaryBody("uploaded_file[]", path.toFile(), ContentType.IMAGE_PNG, path.getFileName().toString())
                 .build();
         HttpRequest upload = HttpRequest.newBuilder()
-                .uri(URI.create("https://upload.cc/image_upload"))
+                .uri(URI.create(UPLOADCCURL))
                 .header("Referer", "https://upload.cc/")
                 .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/73.0.3683.86 Safari/537.36")
                 .header("Content-Type", "multipart/form-data, boundary=******")
@@ -188,39 +202,91 @@ public class ImageUtil {
                 .thenApply(response -> {
                     String body = response.body();
                     if (response.statusCode() == 200 && body.contains("url")) {
-                        return "https://upload.cc/" + body.substring(body.indexOf("\"url\":\"") + 7, body.indexOf("\",\"thumbnail\"")).replace("\\", "");
+                        String url = UPLOADCCPRE + body.substring(body.indexOf("\"url\":\"") + 7, body.indexOf("\",\"thumbnail\":\"")).replace("\\", "");
+                        return new ImageUrls(url, url);
                     }
                     System.err.println(path + "上传到uploadCC失败");
-                    return "上传失败" + path;
+                    return new ImageUrls("上传失败" + path, "");
                 });
-
     }
 
-    public CompletableFuture<String> uploadToImgBB(Path path) {
+    public CompletableFuture<ImageUrls> uploadToImgBB(Path path) {
         HttpEntity httpEntity = MultipartEntityBuilder.create()
-                .addBinaryBody("source", path.toFile(), ContentType.IMAGE_GIF, path.getFileName().toString())
                 .addTextBody("type", "file")
                 .addTextBody("action", "upload")
                 .setBoundary("******")
                 .setMode(HttpMultipartMode.BROWSER_COMPATIBLE)
+                .addBinaryBody("source", path.toFile(), ContentType.IMAGE_GIF, path.getFileName().toString())
                 .build();
         HttpRequest upload = HttpRequest.newBuilder()
-                .uri(URI.create("https://zh-cn.imgbb.com/json"))
-                .header("Referer", "https://zh-cn.imgbb.com/")
-                .header("Origin", "https://zh-cn.imgbb.com/")
-                .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/73.0.3683.86 Safari/537.36")
+                .uri(URI.create(IMGBBURL))
+                .header("Referer", IMGBBURL)
+                .header("Origin", IMGBBURL)
                 .header("Content-Type", "multipart/form-data, boundary=******")
+                .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/73.0.3683.86 Safari/537.36")
                 .POST(HttpRequest.BodyPublishers.ofByteArray(entityToByteArray(httpEntity)))
                 .build();
         return httpClient.sendAsync(upload, HttpResponse.BodyHandlers.ofString()).completeOnTimeout(defaultUploadHttpResponse, 4, TimeUnit.MINUTES)
                 .thenApply(response -> {
                     String body = response.body();
                     if (response.statusCode() == 200 && body.contains("image")) {
-                        return body.substring(body.indexOf("\"url\":\"") + 7, body.indexOf("\",\"size_formatted")).replace("\\", "");
+                        String originalUrl = IMGBBPRE + body.substring(body.indexOf("\"url\":\"https:\\/\\/") + 17, body.indexOf("\",\"size_formatted")).replace("\\", "");
+                        String largeUrl = IMGBBPRE + body.substring(body.indexOf("\"url\":\"https:\\/\\/", body.indexOf("\"medium\"")) + 17, body.indexOf("\",\"size\"", body.indexOf("\"medium\""))).replace("\\", "");
+                        if (originalUrl.endsWith(".gif"))
+                            originalUrl = originalUrl.replace(IMGBBPRE, "https://");
+                        return new ImageUrls(originalUrl, largeUrl);
                     }
                     System.err.println(path + "上传到ImgBB失败");
-                    return "上传失败" + path;
+                    return IMAGEURLS301;
                 });
+    }
+
+    public CompletableFuture<Boolean> scanUrl(String url) {
+        HttpRequest upload = HttpRequest.newBuilder()
+                .uri(URI.create(url))
+                .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/73.0.3683.86 Safari/537.36")
+                .header("referer", "https://weibo.com")
+                .GET()
+                .build();
+        return httpClient.sendAsync(upload, HttpResponse.BodyHandlers.discarding())
+                .thenApply(HttpResponse::statusCode)
+                .thenApply(status -> !status.equals(200)).completeOnTimeout(false, 2, TimeUnit.MINUTES);
+    }
+
+    public CompletableFuture<ImageUrls> reUpload(String filename) {
+        if ((Thread.currentThread().getId() & 1) == 1)//分发
+            return uploadToImgBB(Paths.get(path, filename));
+        return uploadToUploadCC(Paths.get(path, filename));
+    }
+
+    public CompletableFuture<HttpResponse<Path>> download(String url, String fileName, Integer sanity_level, String type) {
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(url))
+                .header("referer", "https://app-api.pixiv.net/")
+                .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/73.0.3683.86 Safari/537.36")
+                .GET()
+                .build();
+        String fullFileName;
+        if (sanity_level > 5)
+            fullFileName = fileName + url.substring(url.length() - 4);
+        else {
+            if (type.equals("ugoira"))
+                fullFileName = fileName + ".zip";
+            else
+                fullFileName = fileName + ".jpg";
+        }
+        return httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofFile(Paths.get(path, fullFileName))).completeOnTimeout(defaultDownloadHttpResponse, 8, TimeUnit.MINUTES);
+    }
+
+    private byte[] entityToByteArray(HttpEntity httpEntity) {
+        final ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
+        try {
+            httpEntity.writeTo(byteArrayOutputStream);
+            byteArrayOutputStream.flush();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        return byteArrayOutputStream.toByteArray();
     }
 
     private CompletableFuture<String> uploadToImgur(Path path) throws IOException {
@@ -256,59 +322,62 @@ public class ImageUtil {
         System.out.println(httpClient.send(upload, HttpResponse.BodyHandlers.ofString()).body());
     }
 
-    public CompletableFuture<Boolean> scanUrl(String url) {
+    public CompletableFuture<String> uploadToSMMS(Path path) {
+        MultipartEntityBuilder smfile = MultipartEntityBuilder.create()
+                .addBinaryBody("smfile", path.toFile(), ContentType.IMAGE_PNG, path.getFileName().toString())
+                .setBoundary("******")
+                .setMode(HttpMultipartMode.BROWSER_COMPATIBLE);
+        HttpEntity httpEntity = smfile
+                .build();
+        HttpRequest upload = HttpRequest.newBuilder()
+                .uri(URI.create("https://sm.ms/api/upload"))
+                .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/73.0.3683.86 Safari/537.36")
+                .header("Content-Type", "multipart/form-data, boundary=******")
+                .POST(HttpRequest.BodyPublishers.ofByteArray(entityToByteArray(httpEntity)))
+                .build();
+        return httpClient.sendAsync(upload, HttpResponse.BodyHandlers.ofString()).completeOnTimeout(defaultUploadHttpResponse, 4, TimeUnit.MINUTES)
+                .thenApply(response -> {
+                    String body = response.body();
+                    if (response.statusCode() == 200 && body.contains("url")) {
+                        return body.substring(body.indexOf("\"url\":\"") + 7, body.indexOf("\",\"delete\"")).replace("\\", "");
+                    }
+                    System.err.println(path + "上传到SMMS失败");
+                    return "上传失败" + path;
+                });
+    }
+
+    private CompletableFuture<String> uploadToPostimage(Path path) throws IOException {
+        HttpRequest upload = HttpRequest.newBuilder()
+                .uri(URI.create("http://api.postimage.org/1/upload"))
+                .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/73.0.3683.86 Safari/537.36")
+                .header("Content-Type", "application/x-www-form-urlencoded")
+                .POST(HttpRequest.BodyPublishers.ofString(postimage_apikey + URLEncoder.encode(Base64.getEncoder().encodeToString(Files.readAllBytes(path)), Charset.defaultCharset())))
+                .build();
+        return httpClient.sendAsync(upload, HttpResponse.BodyHandlers.ofString()).completeOnTimeout(defaultUploadHttpResponse, 4, TimeUnit.MINUTES)
+                .thenApply(response -> {
+                    String body = response.body();
+                    if (response.statusCode() == 200 && body.contains("<page>")) {
+                        return body.substring(body.indexOf("<page>") + 6, body.indexOf("</page>")).replace("http", "https");
+                    }
+                    System.err.println(path + "上传到Postimage失败");
+                    return "上传失败" + path;
+                }).thenCompose(this::getPostimageOriginalUrl);
+    }
+
+    private CompletableFuture<String> getPostimageOriginalUrl(String url) {
         HttpRequest upload = HttpRequest.newBuilder()
                 .uri(URI.create(url))
                 .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/73.0.3683.86 Safari/537.36")
                 .GET()
                 .build();
-        return httpClient.sendAsync(upload, HttpResponse.BodyHandlers.discarding())
-                .thenApply(HttpResponse::statusCode)
-                .thenApply(status -> !status.equals(200)).completeOnTimeout(false, 2, TimeUnit.MINUTES);
-    }
-
-    public CompletableFuture<String> reUpload(String filename) {
-        if (System.currentTimeMillis() % 2 == 0)
-            return uploadToImgBB(Paths.get(path, filename)).completeOnTimeout("https://ws4.sinaimg.cn/large/007iuyE8gy1g18b8poxhlj30rs12n7wh.jpg", 5, TimeUnit.MINUTES);
-        return uploadToUploadCC(Paths.get(path, filename)).completeOnTimeout("https://ws4.sinaimg.cn/large/007iuyE8gy1g18b8poxhlj30rs12n7wh.jpg", 5, TimeUnit.MINUTES);
-    }
-
-    public CompletableFuture<HttpResponse<Path>> download(String url, String fileName, Integer sanity_level, String type) {
-        HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(url))
-                .header("referer", "https://app-api.pixiv.net/")
-                .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/73.0.3683.86 Safari/537.36")
-                .GET()
-                .build();
-        String fullFileName;
-        if (sanity_level > 5)
-            fullFileName = fileName + url.substring(url.length() - 4);
-        else {
-            if (type.equals("ugoira"))
-                fullFileName = fileName + ".zip";
-            else
-                fullFileName = fileName + ".jpg";
-        }
-
-        return httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofFile(Paths.get(path, fullFileName))).completeOnTimeout(defaultDownloadHttpResponse, 4, TimeUnit.MINUTES);
-    }
-
-    private byte[] entityToByteArray(HttpEntity httpEntity) {
-        final ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
-        try {
-            httpEntity.writeTo(byteArrayOutputStream);
-            byteArrayOutputStream.flush();
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-        return byteArrayOutputStream.toByteArray();
-    }
-
-    private byte[] combineByteArray(byte[] pre, byte[] data, byte[] post) {
-        byte[] body = new byte[pre.length + data.length + post.length];
-        System.arraycopy(pre, 0, body, 0, pre.length);
-        System.arraycopy(data, 0, body, pre.length, pre.length);
-        System.arraycopy(post, 0, body, pre.length + post.length, pre.length);
-        return body;
+        return httpClient.sendAsync(upload, HttpResponse.BodyHandlers.ofString()).completeOnTimeout(defaultUploadHttpResponse, 4, TimeUnit.MINUTES)
+                .thenApply(response -> {
+                    String body = response.body();
+                    if (response.statusCode() == 200 && body.contains("download")) {
+                        return body.substring(body.indexOf("<a href=\"https://i.postimg.cc/") + 9, body.indexOf("\" id=\"download\"") - 5);
+                    }
+                    System.err.println(path + "获取PostImage原图链接失败");
+                    return "上传失败" + path;
+                });
     }
 }

@@ -10,14 +10,11 @@ import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLParameters;
 import javax.net.ssl.TrustManager;
 import javax.net.ssl.X509TrustManager;
-import java.net.InetSocketAddress;
-import java.net.ProxySelector;
 import java.net.http.HttpClient;
 import java.security.KeyManagementException;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.security.cert.X509Certificate;
-import java.time.Duration;
 import java.util.concurrent.Executors;
 
 @Configuration
@@ -55,8 +52,8 @@ public class PixivCrawlerConfig {
         return HttpClient.newBuilder()
                 .version(HttpClient.Version.HTTP_2)
                 .sslParameters(sslParams)
-            //   .proxy(ProxySelector.of(new InetSocketAddress("127.0.0.1", 8888)))
                 .sslContext(sc)
+                //.proxy(ProxySelector.of(new InetSocketAddress("127.0.0.1", 8888)))
                 .executor(Executors.newFixedThreadPool(nThread))
                 .followRedirects(HttpClient.Redirect.NEVER)
                 .build();

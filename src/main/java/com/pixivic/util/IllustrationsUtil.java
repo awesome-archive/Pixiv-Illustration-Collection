@@ -14,6 +14,9 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.nio.file.StandardOpenOption;
 import java.security.NoSuchAlgorithmException;
 
 @Component
@@ -26,6 +29,8 @@ public class IllustrationsUtil {
     private String domain;
     @Value("${webClient.checkWord}")
     private String checkWord;
+    @Value("${backup.path}")
+    private String backupPath;
 
     public Illustration[] getIllustrations(String mode, String date) throws NoSuchAlgorithmException, IOException, InterruptedException {
         Illustration[][] illustrations = new Illustration[5][];
@@ -79,10 +84,12 @@ public class IllustrationsUtil {
         String requestBody = objectMapper
                 .writerWithDefaultPrettyPrinter()
                 .writeValueAsString(new Rank(illustrations, mode, date));
+        Files.write(Paths.get(backupPath,date+"-"+mode+".json"), requestBody.getBytes(), StandardOpenOption.CREATE,
+                StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE);
         HttpRequest.Builder uri = HttpRequest.newBuilder()
-                .uri(URI.create("http://" + domain + "/ranks"));
+                .uri(URI.create("https://" + domain + "/ranks"));
         HttpRequest getRank = uri
-                .header("checkWord", "1111")
+                .header("checkWord", checkWord)
                 .header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(requestBody))
                 .build();

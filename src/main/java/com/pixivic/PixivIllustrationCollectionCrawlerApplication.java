@@ -2,6 +2,7 @@ package com.pixivic;
 
 import com.pixivic.model.Illustration;
 import com.pixivic.model.illust.ImageUrls;
+import com.pixivic.model.illust.MetaPage;
 import com.pixivic.model.illust.MetaSinglePage;
 import com.pixivic.util.EmailUtil;
 import com.pixivic.util.IllustrationsUtil;
@@ -19,11 +20,13 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.security.NoSuchAlgorithmException;
-import java.util.ArrayList;
+import java.time.DayOfWeek;
+import java.time.LocalDate;
+import java.time.temporal.TemporalAdjusters;
 import java.util.Arrays;
 import java.util.Date;
-import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.IntStream;
@@ -48,7 +51,6 @@ public class PixivIllustrationCollectionCrawlerApplication implements CommandLin
 
     public static void main(String[] args) {
         System.setProperty("jdk.httpclient.allowRestrictedHeaders", "referer");
-        System.setProperty("jdk.httpclient.allowRestrictedHeaders", "connection");
         System.setProperty("jdk.httpclient.allowRestrictedHeaders", "Content-Length");
         System.setProperty("jdk.internal.httpclient.disableHostnameVerification", "true");//取消主机名验证
         SpringApplication app = new SpringApplication(PixivIllustrationCollectionCrawlerApplication.class);
@@ -57,80 +59,86 @@ public class PixivIllustrationCollectionCrawlerApplication implements CommandLin
 
     @Override
     public void run(String[] args) throws IOException, InterruptedException, NoSuchAlgorithmException, MessagingException {
-        //用jdk8新的date
-        final Long FIRST_MAX_TIME = 1000 * 60 * 6L;
-        final Long SECOND_MAX_TIME = 1000 * 60 * 5L;
-        final Long THIRD_MAX_TIME = 1000 * 60 * 4L;
+       /* try {
+            System.out.println(imageUtil.uploadToSina(Paths.get("E:\\2019-04-14\\0.png")).get());
+        } catch (ExecutionException e) {
+            e.printStackTrace();
+        }*/
+        final int FIRST_MAX_TIME = 8;//首次任务队列超时时间限制
+        final int SECOND_MAX_TIME = 5;//二次任务队列超时时间限制
+        final int THIRD_MAX_TIME = 4;//三次任务队列超时时间限制.
         String mode = args[0];
         String date = args[1];
+        switch (mode) {//周排行默认本周一的排行，月排行默认每月一号(确保都有)
+            case "week":
+                date = LocalDate.parse(date).with(DayOfWeek.MONDAY).toString();
+                break;
+            case "month":
+                date = LocalDate.parse(date).with(TemporalAdjusters.firstDayOfMonth()).toString();
+                break;
+        }
+        //新建路径
         Path path = Paths.get(imageUtil.getPath(), mode, date);
         imageUtil.setPath(path.toString());
         Files.createDirectories(path);
-        Illustration[] illustrations = illustrationsUtil.getIllustrations(mode, date);//参数一参数二
-        List<CompletableFuture<Void>> queue = new ArrayList<>();
+        //获取插画信息对象
+        Illustration[] illustrations = illustrationsUtil.getIllustrations(mode, date);
         //统计总图片数
         taskSum = Arrays.stream(illustrations).parallel().mapToInt(Illustration::getPage_count).sum();
+        final CountDownLatch cd = new CountDownLatch(taskSum);
         System.out.println("批处理图片总数为 " + taskSum + " 张");
+        //开始往fork join线程池添加任务
         Arrays.stream(illustrations).parallel().forEach(illustration -> {
             if (illustration.getPage_count() > 1) {
                 IntStream.range(0, illustration.getMeta_pages().size()).parallel().forEach(i -> {
-                    ImageUrls image_urls = illustration.getMeta_pages().get(i).getImage_urls();
-                    try {
-                        queue.add(
-                                imageUtil.deal(image_urls.getOriginal(), illustration.getRank() + "-" + i, illustration.getSanity_level(), illustration.getType())
-                                        .thenAccept(s -> {
-                                            if (s.startsWith("https://") || s.startsWith("上传失败"))
-                                                image_urls.setOriginal(s);
-                                            System.out.print("----上传下载任务队列已完成 " + (flag.incrementAndGet() * 100 / taskSum) + "%----\r");
-                                        }));
-                    } catch (InterruptedException | IOException e) {
-                        flag.incrementAndGet();
-                    }
+                    MetaPage metaPage = illustration.getMeta_pages().get(i);
+                    imageUtil.deal(metaPage.getImage_urls().getOriginal(), illustration.getRank() + "-" + i, illustration.getSanity_level(), illustration.getType())
+                            .thenAccept(s -> {
+                                metaPage.setImage_urls(s);
+                                System.out.print("----上传下载任务队列已完成 " + ((taskSum - cd.getCount()) * 100 / taskSum) + "%----\r");
+                                cd.countDown();
+                            });
                 });
             } else {
                 MetaSinglePage meta_single_page = illustration.getMeta_single_page();
-                try {
-                    queue.add(
-                            imageUtil.deal(meta_single_page.getOriginal_image_url(), illustration.getRank().toString(), illustration.getSanity_level(), illustration.getType())
-                                    .thenAccept(s -> {
-                                                if (s.startsWith("https://") || s.startsWith("上传失败"))
-                                                    meta_single_page.setOriginal_image_url(s);
-                                                System.out.print("----上传下载任务队列已完成 " + (flag.incrementAndGet() * 100 / taskSum) + "%----\r");
-                                            }
-                                    ));
-                } catch (InterruptedException | IOException e) {
-                    flag.incrementAndGet();
-                }
+                imageUtil.deal(meta_single_page.getOriginal_image_url(), illustration.getRank().toString(), illustration.getSanity_level(), illustration.getType())
+                        .thenAccept(url -> {
+                                    meta_single_page.setUrl(url.getOriginal(), url.getLarge());
+                                    System.out.print("----上传下载任务队列已完成 " + ((taskSum - cd.getCount()) * 100 / taskSum) + "%----\r");
+                                    cd.countDown();
+                                }
+                        );
             }
         });
-        Date start = new Date();
-        System.out.println(start + "----第一次下载与上传任务队列加入完毕,主线程开始自旋等待所有任务完成");
-        while (flag.get() < taskSum && (System.currentTimeMillis() - start.getTime()) < FIRST_MAX_TIME) {
-            Thread.sleep(1000 * 30);
-        }
+        System.out.println(new Date() + "----第一次下载与上传任务队列加入完毕,主线程开始阻塞等待所有任务完成");
+        cd.await(FIRST_MAX_TIME, TimeUnit.MINUTES);
         System.out.println(new Date() + "----第一次下载与上传任务队列终了");
-        flag.set(0);
+        System.gc();
+        //扫描任务总数
         taskSum = Arrays.stream(illustrations).parallel().filter(illustration -> illustration.getSanity_level() < 5 && !illustration.getType().equals("ugoira")).mapToInt(Illustration::getPage_count).sum();
-        System.out.println(new Date() + "----将在三分钟后启动扫描新浪图床的外链,待扫描图片数为" + taskSum);
-        Thread.sleep(1000 * 60 * 3);
-        Arrays.stream(illustrations).parallel().filter(illustration -> illustration.getSanity_level() < 5 && !illustration.getType().equals("ugoira"))
+        final CountDownLatch cd2 = new CountDownLatch(taskSum);
+        System.out.println(new Date() + "----将在十五分钟后启动扫描新浪图床的外链,待扫描图片数为" + taskSum);
+        Thread.sleep(1000 * 60 * 15);
+        Arrays.stream(illustrations).parallel().filter(illustration -> illustration.getSanity_level() < 4 && !illustration.getType().equals("ugoira"))
                 .forEach(illustration -> {
                     if (illustration.getPage_count() > 1) {
                         IntStream.range(0, illustration.getMeta_pages().size()).parallel().forEach(i -> {
-                            ImageUrls image_urls = illustration.getMeta_pages().get(i).getImage_urls();
+                            MetaPage metaPage = illustration.getMeta_pages().get(i);
+                            ImageUrls image_urls = metaPage.getImage_urls();
                             imageUtil.scanUrl(image_urls.getOriginal()).thenCompose(isBan -> {
                                 if (isBan) {
                                     String banImg = illustration.getRank() + "-" + i + ".jpg";
                                     System.out.println("检测到 " + banImg + "的外链:" + image_urls.getOriginal() + "被和谐,将重新上传到UploadCC/ImgBB");
-                                    if (!Files.exists(path.resolve(banImg))) {
-                                        return imageUtil.download(image_urls.getOriginal(), illustration.getRank() + "-" + i, illustration.getSanity_level(), illustration.getType()).thenCompose(pathHttpResponse -> imageUtil.reUpload(banImg).completeOnTimeout("uploadCC上传失败", 5, TimeUnit.MINUTES));
+                                    if (image_urls.getOriginal().startsWith("https://i.pximg.net")) {//!Files.exists(path.resolve(banImg))
+                                        return imageUtil.deal(image_urls.getOriginal(), illustration.getRank() + "-" + i, illustration.getSanity_level(), illustration.getType());
                                     }
-                                    return imageUtil.reUpload(banImg).completeOnTimeout("上传失败", 5, TimeUnit.MINUTES);
+                                    return imageUtil.reUpload(banImg).completeOnTimeout(new ImageUrls("上传失败" + banImg,""), 5, TimeUnit.MINUTES);
                                 }
-                                return CompletableFuture.completedFuture(image_urls.getOriginal());
+                                return CompletableFuture.completedFuture(image_urls);
                             }).thenAccept(url -> {
-                                image_urls.setOriginal(url);
-                                System.out.print("----扫描与再上传任务队列已完成 " + (flag.incrementAndGet() * 100 / taskSum) + "%----\r");
+                                metaPage.setImage_urls(url);
+                                System.out.print("----扫描与再上传任务队列已完成 " + ((taskSum - cd2.getCount()) * 100 / taskSum) + "%----\r");
+                                cd2.countDown();
                             });
                         });
                     } else {
@@ -139,57 +147,72 @@ public class PixivIllustrationCollectionCrawlerApplication implements CommandLin
                             if (isBan) {
                                 String banImg = illustration.getRank() + ".jpg";
                                 System.out.println("检测到 " + banImg + "的外链:" + meta_single_page.getOriginal_image_url() + "被和谐,将重新上传到UploadCC/ImgBB");
-                                if (!Files.exists(path.resolve(banImg))) {
-                                    return imageUtil.download(meta_single_page.getOriginal_image_url(), String.valueOf(illustration.getRank()), illustration.getSanity_level(), illustration.getType()).thenCompose(pathHttpResponse -> imageUtil.reUpload(banImg).completeOnTimeout("uploadCC上传失败", 5, TimeUnit.MINUTES));
+                                if (meta_single_page.getOriginal_image_url().startsWith("https://i.pximg.net")) {//!Files.exists(path.resolve(banImg))
+                                    return imageUtil.deal(meta_single_page.getOriginal_image_url(), String.valueOf(illustration.getRank()), illustration.getSanity_level(), illustration.getType());
                                 }
-                                return imageUtil.reUpload(banImg).completeOnTimeout("上传失败", 5, TimeUnit.MINUTES);
+                                return imageUtil.reUpload(banImg).completeOnTimeout(new ImageUrls("上传失败" + banImg,""), 5, TimeUnit.MINUTES);
                             }
-                            return CompletableFuture.completedFuture(meta_single_page.getOriginal_image_url());
+                            return CompletableFuture.completedFuture(new ImageUrls(meta_single_page.getOriginal_image_url(),meta_single_page.getLarge_image_url()));
                         }).thenAccept(url -> {
-                            meta_single_page.setOriginal_image_url(url);
-                            System.out.print("----扫描与再上传任务队列已完成 " + (flag.incrementAndGet() * 100 / taskSum) + "%----\r");
+                            meta_single_page.setUrl(url.getOriginal(), url.getLarge());
+                            System.out.print("----扫描与再上传任务队列已完成 " + ((taskSum - cd2.getCount()) * 100 / taskSum) + "%----\r");
+                            cd2.countDown();
                         });
                     }
                 });
-        start = new Date();
-        System.out.println(start + "----第二次扫描与再上传任务队列加入完毕,主线程开始自旋等待所有任务完成");
-        while (flag.get() < taskSum && (System.currentTimeMillis() - start.getTime()) < SECOND_MAX_TIME) {
-            Thread.sleep(1000 * 30);
-        }
+        System.out.println(new Date() + "----第二次扫描与再上传任务队列加入完毕,主线程开始自旋等待所有任务完成");
+        cd2.await(SECOND_MAX_TIME, TimeUnit.MINUTES);
         System.out.println(new Date() + "----第二次扫描与重上传任务队列终了");
+        System.gc();
         flag.set(0);
         taskSum = 0;
         Arrays.stream(illustrations).parallel().forEach(illustration -> {
             if (illustration.getPage_count() > 1) {
                 IntStream.range(0, illustration.getMeta_pages().size()).parallel().forEach(i -> {
-                    ImageUrls image_urls = illustration.getMeta_pages().get(i).getImage_urls();
-                    if (image_urls.getOriginal().startsWith("上传失败")) {
+                    MetaPage metaPage = illustration.getMeta_pages().get(i);
+                    ImageUrls image_urls = metaPage.getImage_urls();
+                    boolean isNotDownload = image_urls.getOriginal().startsWith("https://i.pximg.net");
+                    if (image_urls.getOriginal().startsWith("上传失败") || isNotDownload) {
                         taskSum++;
-                        imageUtil.uploadToImgBB(Paths.get(image_urls.getOriginal().substring(4)))
+                        CompletableFuture<ImageUrls> responseUrl;
+                        if (isNotDownload)
+                            responseUrl = imageUtil.download(image_urls.getOriginal(), illustration.getRank() + "-" + i, illustration.getSanity_level(), illustration.getType())
+                                    .thenCompose(pathHttpResponse -> imageUtil.uploadToImgBB(pathHttpResponse.body()));
+                        else
+                            responseUrl = imageUtil.uploadToImgBB(Paths.get(image_urls.getOriginal().substring(4)));
+                        responseUrl
                                 .thenAccept(url -> {
-                                    image_urls.setOriginal(url);
+                                    metaPage.setImage_urls(url);
                                     System.out.print("----异常上传的重上传任务队列已完成 " + (flag.incrementAndGet() * 100 / taskSum) + "%----\r");
                                 });
                     }
                 });
             } else {
                 MetaSinglePage meta_single_page = illustration.getMeta_single_page();
-                if (meta_single_page.getOriginal_image_url().startsWith("上传失败")) {
+                boolean isNotDownload = meta_single_page.getOriginal_image_url().startsWith("https://i.pximg.net");
+                if (meta_single_page.getOriginal_image_url().startsWith("上传失败") || isNotDownload) {
                     taskSum++;
-                    imageUtil.uploadToImgBB(Paths.get(meta_single_page.getOriginal_image_url().substring(4)))
+                    CompletableFuture<ImageUrls> responseUrl;
+                    if (isNotDownload)
+                        responseUrl = imageUtil.download(meta_single_page.getOriginal_image_url(), String.valueOf(illustration.getRank()), illustration.getSanity_level(), illustration.getType())
+                                .thenCompose(pathHttpResponse -> imageUtil.uploadToImgBB(pathHttpResponse.body()));
+                    else
+                        responseUrl = imageUtil.uploadToImgBB(Paths.get(meta_single_page.getOriginal_image_url().substring(4)));
+                    responseUrl
                             .thenAccept(url -> {
-                                meta_single_page.setOriginal_image_url(url);
+                                meta_single_page.setUrl(url.getOriginal(), url.getLarge());
                                 System.out.print("----异常上传的重上传任务队列已完成 " + (flag.incrementAndGet() * 100 / taskSum) + "%----\r");
                             });
                 }
             }
         });
-        start = new Date();
+        Date start = new Date();
         System.out.println(start + "----第三次异常上传的重上传任务队列加入完毕,主线程开始自旋等待所有任务完成");
         while (flag.get() < taskSum && (System.currentTimeMillis() - start.getTime()) < THIRD_MAX_TIME) {
             Thread.sleep(1000 * 30);
         }
         System.out.println(new Date() + "----第三次异常上传的重上传任务终了");
+        System.gc();
         System.out.println(new Date() + "----开始post数据到web服务端");
         illustrationsUtil.postToWebClient(illustrations, mode, date);
         System.out.println(new Date() + "----数据已成功post到服务端,邮件通知发送后程序关闭");

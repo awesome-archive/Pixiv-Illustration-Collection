@@ -11,7 +11,6 @@ import org.aspectj.lang.annotation.Aspect;
 public class ExceptionHandler {
     @AfterThrowing(pointcut = "execution(* com.pixivic.*.*(..))", throwing = "ex")
     public void handleException(Exception ex) {
-        System.out.println(ex.toString()+"sdsdsdsd");
         //发邮件
     }
 

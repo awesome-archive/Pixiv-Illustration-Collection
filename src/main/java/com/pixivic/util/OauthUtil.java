@@ -16,7 +16,6 @@ import java.net.http.HttpResponse;
 import java.security.NoSuchAlgorithmException;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Optional;
 
 @Component
 @RequiredArgsConstructor(onConstructor = @__(@Autowired))
@@ -42,14 +41,10 @@ public class OauthUtil {
 
     @PostConstruct
     private void init() throws IOException, InterruptedException, NoSuchAlgorithmException {
-        Map<String, String> paramMap = new HashMap<>();
-        paramMap.put("client_id", client_id);
-        paramMap.put("client_secret", client_secret);
-        paramMap.put("grant_type", "password");
-        paramMap.put("username", username);
-        paramMap.put("password", password);
-        paramMap.put("device_token", device_token);
-        paramMap.put("get_secure_url", "true");
+        Map<String, String> paramMap = new HashMap<>(
+                Map.of("client_id", client_id, "client_secret", client_secret, "grant_type", "password"
+                        , "username", username, "password", password, "device_token", device_token
+                        , "get_secure_url", "true"));
         setAccess_token(refreshToken(httpUtil.getPostEntity(paramMap)));
         paramMap.replace("grant_type", "refresh_token");
         paramMap.put("refresh_token", refresh_token);
