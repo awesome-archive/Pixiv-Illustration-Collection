@@ -16,7 +16,7 @@ public class ZipUtil {
     public void unzip(Path targetDirPath, String zipFilename) {
         try (ZipFile zipFile = new ZipFile(zipFilename)) {
             zipFile.stream()
-                    .parallel() // enable multi-threading
+                    .parallel()
                     .forEach(e -> unzipEntry(zipFile, e, targetDirPath));
         } catch (IOException e) {
             throw new RuntimeException("Error opening zip file '" + zipFilename + "': " + e, e);
@@ -39,10 +39,4 @@ public class ZipUtil {
         }
     }
 
-  /*  public static void main(String[] args) throws InterruptedException {
-        System.out.println(new Date());
-        unzip("C:\\Users\\39282\\Desktop\\respe", "C:\\Users\\39282\\Desktop\\respe.zip");
-
-        System.out.println(new Date());
-    }*/
 }

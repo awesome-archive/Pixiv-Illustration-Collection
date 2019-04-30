@@ -25,9 +25,8 @@ public class HeaderUtil {
         String seed = time + "28c1fdd170a5204386cb1313c7077b34f83e4aaf4aa829ce78c231e05b0bae2c";
         byte[] digest = md5.digest(seed.getBytes());
         StringBuilder hash = new StringBuilder();
-        for (int r3 = 0; r3 < digest.length; r3++) {
+        for (int r3 = 0; r3 < digest.length; r3++)
             hash.append(String.format("%02x", digest[r3]));
-        }
         return new String[]{time, hash.toString()};
     }
 
@@ -38,7 +37,6 @@ public class HeaderUtil {
                 .header("App-OS", "android")
                 .header("App-OS-Version", "5.1")
                 .header("App-Version", "5.0.93")
-                //  .header("Accept-Encoding", "gzip")
                 .header("Accept-Language", "zh_CN")
                 .header("X-Client-Hash", hash[1])
                 .header("X-Client-Time", hash[0]);

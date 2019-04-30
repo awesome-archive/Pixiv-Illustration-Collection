@@ -25,6 +25,8 @@
 - gif图片的显示与下载(仅提供600*600尺寸)
 - 查看更详细的画作信息
 - 查看画师信息
+- 热门排序搜索的时间区间选定
+- 搜索联想
 
 > 技术栈迭代
 
@@ -37,28 +39,14 @@
 > 体验优化
 
 - 本地爬虫使用https请求替代ssl远程连接服务端数据库
-- 将根据p站原生的内容分级调整图床(非动态图片级数大于5上传uploadcc，小于5上传新浪图床，动态图片上传imgur)，将减少新浪图床的和谐造成的不便
+- 将根据p站原生的内容分级调整图床(非动态图片级数大于5上传uploadcc，小于5上传新浪图床，动态图片上传postImage)，将减少新浪图床的和谐造成的不便
 - 更快的web体验
 - 将部署多台图片反代服务器(目前准备两台)
 
 
-### 伺服器:
-- 本地arm服务器:作为爬虫服务器,每日五点爬取pixiv三天前的日排行数据
-- Aws lightsail:反向代理图片请求过程中添加referer请求头,绕过防盗链
-- Uovz香港:反向代理pixiv搜索api,加速访问,延迟提升500ms
-- 息壤 北京:作为主web服务器之一,nginx tomcat动静分离
-- 阿里云 深圳:作为主web服务器之一,nginx tomcat动静分离
-
 ### 架构图:
 ![Image text](https://ws4.sinaimg.cn/large/006346uDgy1fwkh7hxmtjj31pr15t7dn.jpg)
 
-### 使用方法
-更改conf.xml文件与druid配置文件即可
-
-### TODO
-重构:
-* web:spring reacive web
-* crawler:jdk11 httpclient
 
 ## License
 AGPL v3
