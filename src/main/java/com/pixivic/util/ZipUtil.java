@@ -12,7 +12,7 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 
 @Component
-public class ZipUtil {
+final public class ZipUtil {
     public void unzip(Path targetDirPath, String zipFilename) {
         try (ZipFile zipFile = new ZipFile(zipFilename)) {
             zipFile.stream()

@@ -1,7 +1,10 @@
 package com.pixivic.model;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
-import com.pixivic.model.illust.*;
+import com.pixivic.model.illust.MetaPage;
+import com.pixivic.model.illust.MetaSinglePage;
+import com.pixivic.model.illust.Tag;
+import com.pixivic.model.illust.User;
 import lombok.Data;
 
 import java.util.ArrayList;

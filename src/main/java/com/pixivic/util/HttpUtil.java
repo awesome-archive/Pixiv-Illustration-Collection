@@ -6,7 +6,7 @@ import java.util.Iterator;
 import java.util.Map;
 
 @Component
-public class HttpUtil {
+final public class HttpUtil {
     public String getPostEntity(Map<String, String> param) {
         StringBuilder stringBuilder = new StringBuilder();
         Iterator<Map.Entry<String, String>> iterator = param.entrySet().iterator();

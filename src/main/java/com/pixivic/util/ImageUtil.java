@@ -22,11 +22,9 @@ import javax.annotation.PostConstruct;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.net.URI;
-import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
-import java.nio.charset.Charset;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -37,7 +35,7 @@ import java.util.concurrent.TimeUnit;
 
 @Component
 @RequiredArgsConstructor(onConstructor = @__(@Autowired))
-public class ImageUtil {
+final public class ImageUtil {
     private final HttpClient httpClient;
     private final HttpUtil httpUtil;
     private final ZipUtil zipUtil;
@@ -57,8 +55,10 @@ public class ImageUtil {
     private String password;
     @Value("${imgur.client_id}")
     private String imgur_client_id;
-    @Value("${postimage.apikey}")
-    private String postimage_apikey;
+    @Value("${postimage.token}")
+    private String postimage_token;
+    @Value("${postimage.upload_session}")
+    private String postimage_upload_session;
 
     //常量区
     private final static Long MAXSIZE_LEVEL = 10485760L;//大于10m压缩
@@ -91,6 +91,14 @@ public class ImageUtil {
     private final static String IMGBB_3 = "\"medium\"";
     private final static String IMGBB_4 = "\",\"size\"";
     private final static String IMGBB_ERRO = "上传到ImgBB失败";
+
+    private final static String POSTIMG_URL = "https://postimages.org/json/rr";
+    private final static String POSTIMG_TOKEN = "token";
+    private final static String POSTIMG_UPLOAD_SESSION = "upload_session";
+    private final static String POSTIMG_NUMFILES = "numfiles";
+    private final static String POSTIMG_FILE = "file";
+    private final static String POSTIMG_1 = "main-image\" src=\"";
+    private final static String POSTIMG_2 = "\" style=\"display:block;";
 
     private final static String COOKIE = "Cookie";
     private final static String REFERER = "Referer";
@@ -157,7 +165,7 @@ public class ImageUtil {
         return download(url, fileName, sanity_level, type).whenComplete((resp, throwable) -> {
             Integer respSize = Integer.valueOf(resp.headers().firstValue(CONTENT_LENGTH).get());
             if (respSize > MAXSIZE_LEVEL) {//使用响应头看大小
-                System.out.println("\n" + fileName + " 尺寸过大准备进行压缩---------------"); //压缩(png百分99转jpg,其他则百分80转jpg)
+                System.out.println(fileName + " 尺寸过大准备进行压缩---------------"); //压缩(png百分99转jpg,其他则百分80转jpg)
                 int quality = resp.body().endsWith(PNG) ? (respSize > MAXSIZE_LEVEL * 2 ? 70 : 99) : 80;
                 try {
                     pooledGMService.execute(GM_1 + quality + GM_2 + resp.body().toString() + GM_3 + Paths.get(path, fileName) + JPG);
@@ -174,7 +182,7 @@ public class ImageUtil {
                     zipUtil.unzip(path, resp.body().toString());
                     String s = path.toString();
                     pooledGMService.execute(GM_4 + s + GM_5 + s + GIF);
-                    System.out.println("合成GIF成功,等待上传----------------------------");
+                    System.out.println(fileName + "合成GIF成功,等待上传----------------------------");
                 } catch (IOException | GMException | GMServiceException e) {
                     System.err.println("图片处理异常");
                 }
@@ -185,7 +193,7 @@ public class ImageUtil {
                             Path path = Paths.get(this.path, fileName + GIF);
                             return Files.size(path) < MAXSIZE_LEVEL ? uploadToImgBB(path) : uploadToSina(Paths.get(this.path, fileName, "000000.jpg"));//gif大小限制
                         } else {
-                            return sanity_level < 4 ? uploadToSina(body) : ((Thread.currentThread().getId() & 1) == 1 ? uploadToUploadCC(body) : uploadToImgBB(body));
+                            return sanity_level < 4 ? uploadToSina(body) : balanceUpload(body);
                         }
                     } catch (IOException e) {
                         return CompletableFuture.completedFuture(IMAGEURLS301);//上传异常
@@ -259,7 +267,6 @@ public class ImageUtil {
         HttpRequest upload = HttpRequest.newBuilder()
                 .uri(URI.create(IMGBB_URL))
                 .header(REFERER, IMGBB_URL)
-                //      .header("Origin", IMGBB_URL)
                 .header(CONTENT_TYPE, MULTIPART)
                 .header(UA, CHROME_UA)
                 .POST(HttpRequest.BodyPublishers.ofByteArray(entityToByteArray(httpEntity)))
@@ -279,6 +286,51 @@ public class ImageUtil {
                 });
     }
 
+    public CompletableFuture<ImageUrls> uploadToPostimage(Path path) {
+        HttpEntity httpEntity = MultipartEntityBuilder.create()
+                .addTextBody(POSTIMG_TOKEN, postimage_token)
+                .addTextBody(POSTIMG_UPLOAD_SESSION, postimage_upload_session)
+                .addTextBody(POSTIMG_NUMFILES, "1")
+                .setBoundary(BOUNDARY)
+                .setMode(HttpMultipartMode.BROWSER_COMPATIBLE)
+                .addBinaryBody(POSTIMG_FILE, path.toFile(), ContentType.IMAGE_GIF, path.getFileName().toString())
+                .build();
+        HttpRequest upload = HttpRequest.newBuilder()
+                .uri(URI.create(POSTIMG_URL))
+                .header(UA, CHROME_UA)
+                .header(CONTENT_TYPE, MULTIPART)
+                .POST(HttpRequest.BodyPublishers.ofByteArray(entityToByteArray(httpEntity)))
+                .build();
+        return httpClient.sendAsync(upload, HttpResponse.BodyHandlers.ofString()).completeOnTimeout(defaultUploadHttpResponse, 4, TimeUnit.MINUTES)
+                .thenApply(response -> {
+                    String body = response.body();
+                    if (response.statusCode() == 200 && body.contains(UPLOADCC_1)) {
+                        return body.substring(body.indexOf(UPLOADCC_2) + 7, body.indexOf("\\/", body.length() - 15)).replace(URL_DEAL, NONE);
+                    }
+                    System.err.println(path + "上传到Postimage失败");
+                    return "上传失败" + path;
+                }).thenCompose(this::getPostimageOriginalUrl);
+    }
+
+    private CompletableFuture<ImageUrls> getPostimageOriginalUrl(String url) {
+        HttpRequest upload = HttpRequest.newBuilder()
+                .uri(URI.create(url))
+                .header(UA, CHROME_UA)
+                .GET()
+                .build();
+        return httpClient.sendAsync(upload, HttpResponse.BodyHandlers.ofString()).completeOnTimeout(defaultUploadHttpResponse, 4, TimeUnit.MINUTES)
+                .thenApply(response -> {
+                    String body = response.body();
+                    if (response.statusCode() == 200 && body.contains("download")) {
+                        return new ImageUrls(
+                                IMGBB_PRE + body.substring(body.indexOf("<a href=\"https://i.postimg.cc/") + 17, body.indexOf("\" id=\"download\"") - 5),
+                                IMGBB_PRE + body.substring(body.indexOf(POSTIMG_1) + 25, body.indexOf(POSTIMG_2)).replace(URL_DEAL, NONE));
+                    }
+                    System.err.println(path + "获取PostImage原图链接失败");
+                    return new ImageUrls(ERROR + path, NONE);
+                });
+    }
+
     public CompletableFuture<Boolean> scanUrl(String url) {
         HttpRequest upload = HttpRequest.newBuilder()
                 .uri(URI.create(url))
@@ -291,8 +343,14 @@ public class ImageUtil {
                 .thenApply(status -> !status.equals(200)).completeOnTimeout(false, 1, TimeUnit.MINUTES);
     }
 
-    public CompletableFuture<ImageUrls> reUpload(String filename) {
-        return (Thread.currentThread().getId() & 1) == 1 ? uploadToImgBB(Paths.get(path, filename)) : uploadToUploadCC(Paths.get(path, filename));
+    public CompletableFuture<ImageUrls> balanceUpload(String filename) {
+        long id = Thread.currentThread().getId() & 3;
+        return id > 1 ? uploadToUploadCC(Paths.get(path, filename)) : (id == 0 ? uploadToImgBB(Paths.get(path, filename)) : uploadToPostimage(Paths.get(path, filename)));
+    }
+
+    private CompletableFuture<ImageUrls> balanceUpload(Path path) {
+        long id = Thread.currentThread().getId() & 3;
+        return id > 1 ? uploadToUploadCC(path) : (id == 0 ? uploadToImgBB(path) : uploadToPostimage(path));
     }
 
     public CompletableFuture<HttpResponse<Path>> download(String url, String fileName, Integer sanity_level, String type) {
@@ -374,38 +432,22 @@ public class ImageUtil {
                 });
     }
 
-    private CompletableFuture<String> uploadToPostimage(Path path) throws IOException {
+        /*public CompletableFuture<String> uploadToPostimage2(Path path) throws IOException {
         HttpRequest upload = HttpRequest.newBuilder()
                 .uri(URI.create("http://api.postimage.org/1/upload"))
                 .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/73.0.3683.86 Safari/537.36")
                 .header("Content-Type", "application/x-www-form-urlencoded")
-                .POST(HttpRequest.BodyPublishers.ofString(postimage_apikey + URLEncoder.encode(Base64.getEncoder().encodeToString(Files.readAllBytes(path)), Charset.defaultCharset())))
+                .POST(HttpRequest.BodyPublishers.ofString(URLEncoder.encode(Base64.getEncoder().encodeToString(Files.readAllBytes(path)), Charset.defaultCharset())))
                 .build();
         return httpClient.sendAsync(upload, HttpResponse.BodyHandlers.ofString()).completeOnTimeout(defaultUploadHttpResponse, 4, TimeUnit.MINUTES)
                 .thenApply(response -> {
                     String body = response.body();
+                    System.out.println(body);
                     if (response.statusCode() == 200 && body.contains("<page>")) {
                         return body.substring(body.indexOf("<page>") + 6, body.indexOf("</page>")).replace("http", "https");
                     }
                     System.err.println(path + "上传到Postimage失败");
                     return "上传失败" + path;
                 }).thenCompose(this::getPostimageOriginalUrl);
-    }
-
-    private CompletableFuture<String> getPostimageOriginalUrl(String url) {
-        HttpRequest upload = HttpRequest.newBuilder()
-                .uri(URI.create(url))
-                .header(UA, CHROME_UA)
-                .GET()
-                .build();
-        return httpClient.sendAsync(upload, HttpResponse.BodyHandlers.ofString()).completeOnTimeout(defaultUploadHttpResponse, 4, TimeUnit.MINUTES)
-                .thenApply(response -> {
-                    String body = response.body();
-                    if (response.statusCode() == 200 && body.contains("download")) {
-                        return body.substring(body.indexOf("<a href=\"https://i.postimg.cc/") + 9, body.indexOf("\" id=\"download\"") - 5);
-                    }
-                    System.err.println(path + "获取PostImage原图链接失败");
-                    return ERROR + path;
-                });
-    }
+    }*/
 }

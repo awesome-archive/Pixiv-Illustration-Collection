@@ -14,7 +14,7 @@ import java.nio.file.Paths;
 import java.util.Optional;
 
 @Component
-public class DefaultDownloadHttpResponse implements HttpResponse<Path> {
+final public class DefaultDownloadHttpResponse implements HttpResponse<Path> {
 
     private final Path defaultPath;
     private final HttpHeaders httpHeaders;

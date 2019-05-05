@@ -13,15 +13,20 @@ import java.util.Locale;
 
 @Component
 @RequiredArgsConstructor(onConstructor = @__(@Autowired))
-public class HeaderUtil {
+final public class HeaderUtil {
 
-    public String[] gethash() throws NoSuchAlgorithmException {
+    public String[] gethash() {
         SimpleDateFormat simpleDateFormat;
         String fortmat = "yyyy-MM-dd'T'HH:mm:ssZZZZZ";
         simpleDateFormat = new SimpleDateFormat(fortmat, Locale.US);
         Date date = new Date();
         String time = simpleDateFormat.format(date);
-        MessageDigest md5 = MessageDigest.getInstance("MD5");
+        MessageDigest md5 = null;
+        try {
+            md5 = MessageDigest.getInstance("MD5");
+        } catch (NoSuchAlgorithmException e) {
+            e.printStackTrace();
+        }
         String seed = time + "28c1fdd170a5204386cb1313c7077b34f83e4aaf4aa829ce78c231e05b0bae2c";
         byte[] digest = md5.digest(seed.getBytes());
         StringBuilder hash = new StringBuilder();
@@ -30,7 +35,7 @@ public class HeaderUtil {
         return new String[]{time, hash.toString()};
     }
 
-    public void decorateHeader(HttpRequest.Builder builder) throws NoSuchAlgorithmException {
+    public void decorateHeader(HttpRequest.Builder builder) {
         String[] hash = gethash();
         builder.header("User-Agent", "PixivAndroidApp/5.0.93 (Android 5.1; m2)")
                 .header("Content-Type", "application/x-www-form-urlencoded")

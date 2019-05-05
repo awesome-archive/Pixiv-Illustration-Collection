@@ -1,5 +1,6 @@
 package com.pixivic.util;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.pixivic.model.Illustration;
@@ -17,11 +18,14 @@ import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
-import java.security.NoSuchAlgorithmException;
+import java.util.ArrayList;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
+import java.util.stream.IntStream;
 
 @Component
 @RequiredArgsConstructor(onConstructor = @__(@Autowired))
-public class IllustrationsUtil {
+final public class IllustrationsUtil {
     private final HttpClient httpClient;
     private final HeaderUtil headerUtil;
     private final OauthUtil oauthUtil;
@@ -32,17 +36,20 @@ public class IllustrationsUtil {
     @Value("${backup.path}")
     private String backupPath;
 
-    public Illustration[] getIllustrations(String mode, String date) throws NoSuchAlgorithmException, IOException, InterruptedException {
-        Illustration[][] illustrations = new Illustration[5][];
-        Illustration[] illustrationsLIst;
-        for (int i = 0; i < 5; i++) {
-            illustrations[i] = jsonToObject(getIllustrationsJson(mode, date, i));
-        }
-        illustrationsLIst = arrangeArray(illustrations);
-        return illustrationsLIst;
+    public ArrayList<Illustration> getIllustrations(String mode, String date) throws InterruptedException {
+        ArrayList<Illustration> illustrations = new ArrayList<>(150);
+        final CountDownLatch cd = new CountDownLatch(5);
+        IntStream.range(0, 5).parallel().forEach(i -> getIllustrationsJson(mode, date, i).thenAccept(illustration -> {
+            illustrations.addAll(illustration);
+            cd.countDown();
+        }));
+        cd.await();
+        illustrations.trimToSize();
+        IntStream.range(0, illustrations.size()).forEach(index -> illustrations.get(index).setRank(index));
+        return illustrations;
     }
 
-    private String getIllustrationsJson(String mode, String date, Integer index) throws NoSuchAlgorithmException, IOException, InterruptedException {
+    private CompletableFuture<ArrayList<Illustration>> getIllustrationsJson(String mode, String date, Integer index) {
         HttpRequest.Builder uri = HttpRequest.newBuilder()
                 .uri(URI.create("https://search.api.pixivic.com/v1/illust/ranking?mode=" + mode + "&offset=" + index * 30 + "&date=" + date));
         headerUtil.decorateHeader(uri);
@@ -50,36 +57,24 @@ public class IllustrationsUtil {
                 .header("Authorization", "Bearer " + oauthUtil.getAccess_token())
                 .GET()
                 .build();
-        return httpClient.send(getRank, HttpResponse.BodyHandlers.ofString()).body();
+        return httpClient.sendAsync(getRank, HttpResponse.BodyHandlers.ofString()).thenApply(response -> jsonToObject(response.body()));
     }
 
     //转换日排行json数据
-    private Illustration[] jsonToObject(String data) throws IOException {
-        data = data.replace("{\"illusts\":", "");
+    private ArrayList<Illustration> jsonToObject(String data) {
+        data = data.replace("{\"illusts\":", "").substring(0, data.indexOf(",\"next_"));
         ObjectMapper objectMapper = new ObjectMapper();
         objectMapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
-        return objectMapper.readValue(data, Illustration[].class);
+        try {
+            return objectMapper.readValue(data, new TypeReference<ArrayList<Illustration>>() {
+            });
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        return null;
     }
 
-    //整理日排行插画数组
-    private Illustration[] arrangeArray(Illustration[][] illustrations) {
-        int count = 0;
-        int index = 0;
-        for (Illustration[] illustration : illustrations) {
-            count += illustration.length;
-        }
-        Illustration[] data = new Illustration[count];
-        for (Illustration[] illustration : illustrations) {
-            System.arraycopy(illustration, 0, data, index, illustration.length);
-            index += illustration.length;
-        }
-        for (int i = 0; i < data.length; i++) {
-            data[i].setRank(i);
-        }
-        return data;
-    }
-
-    public String postToWebClient(Illustration[] illustrations, String mode, String date) throws IOException, InterruptedException {
+    public String postToWebClient(ArrayList<Illustration> illustrations, String mode, String date) throws IOException, InterruptedException {
         ObjectMapper objectMapper = new ObjectMapper();
         String requestBody = objectMapper
                 .writerWithDefaultPrettyPrinter()

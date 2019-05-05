@@ -11,7 +11,7 @@ import java.net.http.HttpResponse;
 import java.util.Optional;
 
 @Component
-public class DefaultUploadHttpResponse implements HttpResponse<String> {
+final public class DefaultUploadHttpResponse implements HttpResponse<String> {
 
     @Override
     public int statusCode() {

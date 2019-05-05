@@ -19,7 +19,7 @@ import java.util.Map;
 
 @Component
 @RequiredArgsConstructor(onConstructor = @__(@Autowired))
-public class OauthUtil {
+final public class OauthUtil {
     private final HttpClient httpClient;
     private final HeaderUtil headerUtil;
     private final HttpUtil httpUtil;
