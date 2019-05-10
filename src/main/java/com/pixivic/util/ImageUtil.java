@@ -348,7 +348,7 @@ final public class ImageUtil {
         return id > 1 ? uploadToUploadCC(Paths.get(path, filename)) : (id == 0 ? uploadToImgBB(Paths.get(path, filename)) : uploadToPostimage(Paths.get(path, filename)));
     }
 
-    private CompletableFuture<ImageUrls> balanceUpload(Path path) {
+    public CompletableFuture<ImageUrls> balanceUpload(Path path) {
         long id = Thread.currentThread().getId() & 3;
         return id > 1 ? uploadToUploadCC(path) : (id == 0 ? uploadToImgBB(path) : uploadToPostimage(path));
     }
