@@ -53,7 +53,7 @@ public class PixivIllustrationCollectionCrawlerApplication implements CommandLin
         System.setProperty("jdk.httpclient.allowRestrictedHeaders", "Referer");
         System.setProperty("jdk.httpclient.allowRestrictedHeaders", "Content-Length");
         System.setProperty("jdk.internal.httpclient.disableHostnameVerification", "true");//取消主机名验证
-        SpringApplication app = new SpringApplication(com.pixivic.PixivIllustrationCollectionCrawlerApplication.class);
+        SpringApplication app = new SpringApplication(PixivIllustrationCollectionCrawlerApplication.class);
         app.run(args);
     }
 
@@ -66,7 +66,7 @@ public class PixivIllustrationCollectionCrawlerApplication implements CommandLin
         }*/
         final int FIRST_MAX_TIME = 10;//首次任务队列超时时间限制
         final int SECOND_MAX_TIME = 5;//二次任务队列超时时间限制
-        final int THIRD_MAX_TIME = 7;//三次任务队列超时时间限制.
+        final int THIRD_MAX_TIME = 20;//三次任务队列超时时间限制.
         String mode = args[0];
         String date = args[1];
         switch (mode) {//周排行默认本周一的排行，月排行默认每月一号(确保都有)
@@ -98,8 +98,8 @@ public class PixivIllustrationCollectionCrawlerApplication implements CommandLin
         //扫描任务总数
         taskSum = illustrations.stream().parallel().filter(illustration -> illustration.getSanity_level() < 4 && !illustration.getType().equals("ugoira")).mapToInt(Illustration::getPage_count).sum();
         final CountDownLatch cd2 = new CountDownLatch(taskSum);
-        System.out.println(new Date() + "----将在三十分钟后启动扫描新浪图床的外链,待扫描图片数为" + taskSum);
-        Thread.sleep(1000 * 60 * 30);
+        System.out.println(new Date() + "----将在四十分钟后启动扫描新浪图床的外链,待扫描图片数为" + taskSum);
+        Thread.sleep(1000 * 60 * 40);
         stage2(illustrations, cd2);
         System.out.println(new Date() + "----第二次扫描与再上传任务队列加入完毕,总任务数为" + taskSum + ",主线程开始自旋等待所有任务完成");
         cd2.await(SECOND_MAX_TIME, TimeUnit.MINUTES);//超时

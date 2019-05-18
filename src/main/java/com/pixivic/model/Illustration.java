@@ -24,7 +24,9 @@ public class Illustration {
     private Integer page_count;
     private Integer width;
     private Integer height;
+    private Float height_width_ratio;//长宽比
     private Integer rank;
+    private String dateOfThisRank;//当前所在排行的日期
     private Integer sanity_level;//色情指数(大于5上传其他图床)
     private MetaSinglePage meta_single_page;
     private ArrayList<MetaPage> meta_pages;

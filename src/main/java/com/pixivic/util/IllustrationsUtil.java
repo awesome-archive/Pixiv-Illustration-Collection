@@ -5,6 +5,8 @@ import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.pixivic.model.Illustration;
 import com.pixivic.model.Rank;
+import com.pixivic.model.illust.ImageUrls;
+import com.pixivic.model.illust.MetaSinglePage;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -75,20 +77,45 @@ final public class IllustrationsUtil {
     }
 
     public String postToWebClient(ArrayList<Illustration> illustrations, String mode, String date) throws IOException, InterruptedException {
+        dealIllustrations(illustrations, date);
         ObjectMapper objectMapper = new ObjectMapper();
         String requestBody = objectMapper
                 .writerWithDefaultPrettyPrinter()
                 .writeValueAsString(new Rank(illustrations, mode, date));
-        Files.write(Paths.get(backupPath,date+"-"+mode+".json"), requestBody.getBytes(), StandardOpenOption.CREATE,
+        Files.write(Paths.get(backupPath, date + "-" + mode + ".json"), requestBody.getBytes(), StandardOpenOption.CREATE,
                 StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE);
         HttpRequest.Builder uri = HttpRequest.newBuilder()
                 .uri(URI.create("https://" + domain + "/ranks"));
         HttpRequest getRank = uri
-                .header("checkWord", checkWord)
+                .header("word", checkWord)
+                .header("Referer", "https://pixivic.com")
                 .header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(requestBody))
                 .build();
         return httpClient.send(getRank, HttpResponse.BodyHandlers.ofString()).body();
+    }
+
+    private void dealIllustrations(ArrayList<Illustration> illustrations, String date) {
+        illustrations.stream().parallel().forEach(illustration -> {
+            illustration.setDateOfThisRank(date);
+            illustration.setHeight_width_ratio((float) illustration.getHeight() / illustration.getWidth());
+            if (illustration.getPage_count() > 1) {
+                illustration.getMeta_pages().forEach(metaPage -> {
+                    ImageUrls image_urls = metaPage.getImage_urls();
+                    image_urls.setOriginal(dealUrl(image_urls.getOriginal()));
+                    image_urls.setLarge(dealUrl(image_urls.getLarge()));
+                });
+            } else {
+                MetaSinglePage meta_single_page = illustration.getMeta_single_page();
+                meta_single_page.setUrl(dealUrl(meta_single_page.getOriginal_image_url()), dealUrl(meta_single_page.getLarge_image_url()));
+            }
+        });
+    }
+
+    private String dealUrl(String url) {
+        if (url == null || url.startsWith("上传失败"))
+            url = "https://upload.cc/i1/2019/05/17/ZyANYC.gif";
+        return url.replace("i.pximg.net", "i.pximg.qixiv.me");
     }
 
 }
