@@ -8,10 +8,15 @@ import dev.cheerfun.pixivic.common.util.JsonBodyHandler;
 import dev.cheerfun.pixivic.common.util.pixiv.RequestUtil;
 import dev.cheerfun.pixivic.crawler.pixiv.mapper.IllustrationMapper;
 import dev.cheerfun.pixivic.web.common.util.YouDaoTranslatedUtil;
+import dev.cheerfun.pixivic.web.search.dto.PixivSearchSuggestionDTO;
 import dev.cheerfun.pixivic.web.search.dto.SearchSuggestionSyncDTO;
+import dev.cheerfun.pixivic.web.search.dto.TagTranslation;
 import dev.cheerfun.pixivic.web.search.exception.SearchException;
 import dev.cheerfun.pixivic.web.search.mapper.PixivSuggestionMapper;
-import dev.cheerfun.pixivic.web.search.model.Response.*;
+import dev.cheerfun.pixivic.web.search.model.Response.BangumiSearchResponse;
+import dev.cheerfun.pixivic.web.search.model.Response.PixivSearchCandidatesResponse;
+import dev.cheerfun.pixivic.web.search.model.Response.SaucenaoResponse;
+import dev.cheerfun.pixivic.web.search.model.Response.YoudaoTranslatedResponse;
 import dev.cheerfun.pixivic.web.search.model.SearchSuggestion;
 import dev.cheerfun.pixivic.web.search.util.ImageSearchUtil;
 import dev.cheerfun.pixivic.web.search.util.SearchUtil;
@@ -22,7 +27,6 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.util.AntPathMatcher;
 import org.springframework.web.servlet.HandlerMapping;
-import org.springframework.web.util.HtmlUtils;
 
 import javax.servlet.http.HttpServletRequest;
 import java.io.IOException;
@@ -58,7 +62,7 @@ public class SearchService {
     private final ImageSearchUtil imageSearchUtil;
     private final PixivSuggestionMapper pixivSuggestionMapper;
     private final IllustrationMapper illustrationMapper;
-    private volatile ConcurrentHashMap<String, List<SearchSuggestion>> waitSaveToDb = new ConcurrentHashMap(5000);
+    private static volatile ConcurrentHashMap<String, List<SearchSuggestion>> waitSaveToDb = new ConcurrentHashMap(5000);
     private Pattern moeGirlPattern = Pattern.compile("(?<=(?:title=\")).+?(?=\" data-serp-pos)");
 
     public CompletableFuture<PixivSearchCandidatesResponse> getCandidateWords(String keyword) {
@@ -92,46 +96,45 @@ public class SearchService {
     public CompletableFuture<List<SearchSuggestion>> getPixivSearchSuggestion(String keyword) {
         HttpRequest httpRequest = HttpRequest.newBuilder()
                 .header("accept-language", "zh-CN,zh;q=0.9")
-                .uri(URI.create("https://proxy.pixivic.com:23334/search.php?s_mode=s_tag&word=" + URLEncoder.encode(keyword, StandardCharsets.UTF_8)))
+                .uri(URI.create("https://proxy.pixivic.com:23334/ajax/search/artworks/" + URLEncoder.encode(keyword, StandardCharsets.UTF_8)))
                 .GET()
                 .build();
         return httpClient.sendAsync(httpRequest, HttpResponse.BodyHandlers.ofString()).thenApply(r -> {
             String body = r.body();
-            List<PixivSearchSuggestion> pixivSearchSuggestions = null;
-            if (body.contains("data-related-tags")) {
-                try {
-                    pixivSearchSuggestions = objectMapper.readValue(HtmlUtils.htmlUnescape(body.substring(body.indexOf("data-related-tags") + 19, body.indexOf("\"data-tag"))), new TypeReference<List<PixivSearchSuggestion>>() {
-                    });
-                } catch (IOException e) {
-                    e.printStackTrace();
+            try {
+                PixivSearchSuggestionDTO pixivSearchSuggestionDTO = objectMapper.readValue(body, PixivSearchSuggestionDTO.class);
+                Map<String, TagTranslation> tagTranslation = pixivSearchSuggestionDTO.getBody().getTagTranslation();
+                List<String> relatedTags = pixivSearchSuggestionDTO.getBody().getRelatedTags();
+                List<SearchSuggestion> searchSuggestions = relatedTags.stream().map(e -> new SearchSuggestion(e, tagTranslation.get(e)==null? "":tagTranslation.get(e).getZh())).collect(Collectors.toList());
+                if (searchSuggestions.size() > 0) {
+                    //保存
+                    waitSaveToDb.put(keyword, searchSuggestions);
                 }
+                return searchSuggestions;
+            } catch (IOException e) {
+                e.printStackTrace();
             }
-            List<SearchSuggestion> searchSuggestions = null;
-            if (pixivSearchSuggestions != null) {
-                searchSuggestions = pixivSearchSuggestions.stream().map(pixivSearchSuggestion -> new SearchSuggestion(pixivSearchSuggestion.getTag(), pixivSearchSuggestion.getTag_translation())).collect(Collectors.toList());
-                //保存
-                waitSaveToDb.put(keyword, searchSuggestions);
-            }
-            return searchSuggestions;
+            // List<SearchSuggestion> searchSuggestions = null;
+            return null;
         });
     }
 
-    @Scheduled(cron = "0 0/15 * * * ? ")
+    @Scheduled(cron = "0 0/5 * * * ? ")
     private void savePixivSuggestionToDb() {
         final HashMap<String, List<SearchSuggestion>> temp = new HashMap<>(waitSaveToDb);
         waitSaveToDb.clear();
         //持久化
-        if (!waitSaveToDb.isEmpty()) {
+        if (!temp.isEmpty()) {
             temp.keySet().forEach(e -> {
                 List<Tag> searchSuggestions = temp.get(e).stream().map(t -> new Tag(t.getKeyword(), t.getKeywordTranslated())).collect(Collectors.toList());
                 pixivSuggestionMapper.insert(e, searchSuggestions);
+
             });
             //取出没有id的suggest
             List<Tag> tags = pixivSuggestionMapper.queryByNoSuggestId().stream().map(SearchSuggestionSyncDTO::getSearchSuggestion).collect(Collectors.toList());
             if (tags.size() > 0) {
                 illustrationMapper.insertTag(tags);
-                //获取标签id
-                //写回
+                //获取标签id并写回
                 tags.forEach(tag -> {
                     Long tagId = illustrationMapper.getTagId(tag.getName(), tag.getTranslatedName());
                     pixivSuggestionMapper.updateSuggestionTagId(tag, tagId);
@@ -222,8 +225,9 @@ public class SearchService {
             int xRestrict,
             int popWeight,
             int minTotalBookmarks,
-            int minTotalView) {
-        return searchUtil.request(searchUtil.build(keyword, pageSize, page, searchType, illustType, minWidth, minHeight, beginDate, endDate, xRestrict, popWeight, minTotalBookmarks, minTotalView));
+            int minTotalView,
+            int maxSanityLevel) {
+        return searchUtil.request(searchUtil.build(keyword, pageSize, page, searchType, illustType, minWidth, minHeight, beginDate, endDate, xRestrict, popWeight, minTotalBookmarks, minTotalView, maxSanityLevel));
     }
 
     public CompletableFuture<SaucenaoResponse> searchByImage(String imageUrl) {

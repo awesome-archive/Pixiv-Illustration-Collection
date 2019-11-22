@@ -38,18 +38,17 @@ public class RankDailyService {
     private final IllustrationMapper illustrationMapper;
     private final IllustrationService illustrationService;
     private final RequestUtil requestUtil;
-    private final static String[] modes = {"day", "week", "month"};
+    private final static String[] MODES = {"day", "week", "month", "day_female", "day_male","day_manga","week_manga","month_manga","week_rookie_manga"};
 
     @Scheduled(cron = "0 10 1 * * ?")
     public void pullAllRank() throws InterruptedException {
-
         LocalDate date = LocalDate.now().plusDays(-2);
-        for (String mode : modes) {
+        for (String mode : MODES) {
             illustrationMapper.insertRank(getIllustrations(mode, date.toString()));
         }
     }
 
-    public Rank getIllustrations(String mode, String date) throws InterruptedException {
+    private Rank getIllustrations(String mode, String date) throws InterruptedException {
         ArrayList<Illustration> illustrations = new ArrayList<>(300);
         final CountDownLatch cd = new CountDownLatch(10);
         IntStream.range(0, 10).parallel().forEach(i -> getIllustrationsJson(mode, date, i).thenAccept(illustration -> {
@@ -58,7 +57,19 @@ public class RankDailyService {
         }));
         cd.await();
         illustrations.trimToSize();
-        return new Rank(illustrations, mode, date);
+        String rankMode;
+        switch (mode) {
+            case "day_female":
+                rankMode = "female";
+                break;
+            case "day_male":
+                rankMode = "male";
+                break;
+            default:
+                rankMode=mode;
+                break;
+        }
+        return new Rank(illustrations, rankMode, date);
     }
 
     private CompletableFuture<List<Illustration>> getIllustrationsJson(String mode, String date, Integer index) {
@@ -85,11 +96,11 @@ public class RankDailyService {
         String[] split = s.split("\n");
         //遍历
         int length = split.length;
-        for (int i=1360;i<length;i++) {
+        for (int i = 1360; i < length; i++) {
             System.out.println(split[i]);
             Illustration illustration = illustrationService.pullIllustrationInfo(Integer.parseInt(split[i]));
-            if(illustration!=null){
-                System.out.println(split[i]+"存在");
+            if (illustration != null) {
+                System.out.println(split[i] + "存在");
                 List<Illustration> illustrations = new ArrayList<>();
                 illustrations.add(illustration);
                 illustrationMapper.insert(illustrations);
