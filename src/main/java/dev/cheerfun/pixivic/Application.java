@@ -2,8 +2,10 @@ package dev.cheerfun.pixivic;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.cache.annotation.EnableCaching;
 import org.springframework.scheduling.annotation.EnableAsync;
 import org.springframework.scheduling.annotation.EnableScheduling;
+import org.springframework.transaction.annotation.EnableTransactionManagement;
 
 /**
  * @author OysterQAQ
@@ -14,6 +16,8 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 @SpringBootApplication
 @EnableAsync
 @EnableScheduling
+@EnableCaching
+@EnableTransactionManagement
 public class Application {
     public static void main(String[] args) {
         System.setProperty("jdk.httpclient.allowRestrictedHeaders", "Referer");
