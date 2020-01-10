@@ -1,41 +1,68 @@
+ ## 前言
 
----
-# Pixiv Illustration Collection
--------------
-一个提供有限的pixiv日排行与高级会员搜索的站点
- 
-![](https://img.shields.io/github/stars/OysterQAQ/Pixiv-Illustration-Collection.svg) ![](https://img.shields.io/github/forks/OysterQAQ/Pixiv-Illustration-Collection.svg) ![](https://img.shields.io/badge/license-AGPLv3-blue.svg)
- 
- 
-### Link:https://pixivic.com
+## About Code
 
-### Bright Point:
-- 前后端完全分离
-- 三图床混合优化图片加载体验
-- 匿名回复邮件提醒(昵称与邮件由cookie与url携带进行自动填充)
-- Nginx反向代理(作为跳板优化延迟与tomcat集群动静分离)
-- 原生js
-- PC端移动端单独适配(Nginx UA判断跳转)
-- 爬虫业务与web业务服务端分别分布
-- SSH隧道连接数据库(安全性)
-- Httpclient连接池,线程池队列,Druid数据库连接池
+### 架构图
 
+![](https://upload.cc/i1/2019/09/21/LC8gfm.png)
 
-### 伺服器:
-- 本地arm服务器:作为爬虫服务器,每日五点爬取pixiv三天前的日排行数据
-- Aws lightsail:反向代理图片请求过程中添加referer请求头,绕过防盗链
-- Uovz香港:反向代理pixiv搜索api,加速访问,延迟提升500ms
-- 息壤 北京:作为主web服务器之一,nginx tomcat动静分离
-- 阿里云 深圳:作为主web服务器之一,nginx tomcat动静分离
+### Bright Point
 
-### 架构图:
-![Image text](https://ws4.sinaimg.cn/large/006346uDgy1fwkh7hxmtjj31pr15t7dn.jpg)
+- 基于注解的基础设施模块
+- 基于`ElasticSearch`的近实时搜索
+- 基于`redis`的`stream`作为消息队列构成消息模块
+- 基于`Logstash`的同步
+- 基于`JDK 11`的`Httpclient`
+- `Restful` API
 
-### 使用方法
-更改conf.xml文件与druid配置文件即可
+## About Feature
 
-### TODO
-等待使用spring reacive web重构
+### 检索
 
-## License
-AGPL v3
+- 根据画师id检索画师
+- 根据画作id检索画作详情
+- 依赖于`saucenao`的以图搜图
+- 依赖于`Pixiv`的相关性tag
+- 依赖于`Pixiv`的搜索词自动补全
+- 依赖于百科的搜索词->词条的尝试（搜索建议）
+- 多关键词搜索（空格切分）
+- 自动翻译
+- 更高的定制性（长宽、画作类型、创建时间等）
+
+### 排行
+
+- 日、周、月(各种模式)排行的查看
+
+### spotlight
+
+- spotlight主题画辑的查看
+
+### ACG资讯
+
+- 集合资讯查看
+
+### Common
+
+- 用户模块
+
+- 收藏画作
+
+- 获取画作关联画作列表
+
+- follow画师
+
+- 关注画师最新画作
+
+- 查看画师画作(及其汇总信息)
+
+- 给画作添加Tag
+
+- 评论及点赞模块
+
+- 通用消息模块(暂未实现)
+
+- 用户行为追踪与还原(时间轴)、支持自定义书签(备份点)(暂未实现)
+
+- 喜爱画作分享到社群(暂未实现)
+
+  
