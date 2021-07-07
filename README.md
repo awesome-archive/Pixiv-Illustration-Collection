@@ -40,9 +40,9 @@ PC：
 - 基于注解的基础设施aop模块（jwt权限校验、令牌桶限流、状态机敏感词过滤、验证码校验）
 - 基于[Deeplearning4j](https://github.com/eclipse/deeplearning4j)的一些简单深度学习相关使用
 
-* [Open_nsfw](https://github.com/yahoo/open_nsfw)模型进行图片色情检测
-* [DeepDanbooru](https://github.com/KichangKim/DeepDanbooru)模型进行插画标签提取
-* vgg16模型进行插画特征抽取
+  * [Open_nsfw](https://github.com/yahoo/open_nsfw)模型进行图片色情检测
+  * [DeepDanbooru](https://github.com/KichangKim/DeepDanbooru)模型进行插画标签提取
+  * vgg16模型进行插画特征抽取
 
 - 基于[tf-serving](https://github.com/tensorflow/serving)的深度学习模型部署与服务提供
 - 基于[Milvus](https://github.com/milvus-io/milvus/)的向量搜索实现以图搜源
